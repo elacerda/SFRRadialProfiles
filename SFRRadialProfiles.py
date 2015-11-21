@@ -49,27 +49,32 @@ def parser_args(args_str):
         'underS06' : False,
         'noplot' : False,
         'whanSF' : None,
+        'hdf5' : None,
         'weiradprof' : True,
-        'minpopx' : 0.05,
-        'mintauv' : 0.05,
-        'mintauvneb' : 0.05,
-        'maxtauvneberr' : 999.,
+        'rgbcuts' : False,
+        'filter_residual' : False,
+        'gasprop' : False,
+        'nolinecuts' : False,
+        'output' : None,
+        'v_run' : -1,
+        'minpopx' : np.finfo(np.float_).min,
+        'mintauv' : np.finfo(np.float_).min,
+        'mintauvneb' : np.finfo(np.float_).min,
+        'maxtauvneberr' : np.finfo(np.float_).max,
         'rbinini' : 0.0,
         'rbinfin' : 2.0,
         'rbinstep' : 0.1,
         'gals_filename' : paths.califa_work_dir + 'listv20_q050.d15a.txt',
-        'rgbcuts' : False,
-        'filter_residual' : False,
-        'gasprop' : False,
-        'v_run' : -1,
-        'nolinecuts' : False,
-        'output' : None,
     }
     
     parser = ap.ArgumentParser(description = '%s' % args_str)
     parser.add_argument('--debug', '-D',
                         action = 'store_true',
                         default = default_args['debug'])
+    parser.add_argument('--hdf5', '-H',
+                        metavar = 'FILE',
+                        type = str,
+                        default = default_args['hdf5'])
     parser.add_argument('--noplot', 
                         action = 'store_true',
                         default = default_args['noplot'])
@@ -136,6 +141,7 @@ def parser_args(args_str):
                         metavar = 'FRAC',
                         type = float,
                         default = default_args['rbinstep'])
+    
 
     return parser.parse_args()
 
@@ -272,25 +278,21 @@ if __name__ == '__main__':
     tSF__T = np.array([1, 3.2, 10, 100]) * 1e7
     N_T = len(tSF__T)
 
-    # Z-time-scale array (index __U).
-    tZ__U = np.array([1.0 , 2.0 , 5.0 , 8.0 , 11.3 , 14.2]) * 1.e9
-    N_U = len(tZ__U)
-
     # SYN
     aSFRSD__Trg = np.ma.masked_all((N_T, NRbins, N_gals), dtype = np.float_)
     McorSD__Trg = np.ma.masked_all((N_T, NRbins, N_gals), dtype = np.float_)
                                     
     # EmLines
-    aSFRSD_Ha__Trg = np.ma.empty((N_T, NRbins, N_gals), dtype = np.float_)
-    EW_Ha__rg = np.ma.empty((NRbins, N_gals), dtype = np.float_)
+    aSFRSD_Ha__Trg = np.ma.masked_all((N_T, NRbins, N_gals), dtype = np.float_)
+    EW_Ha__rg = np.ma.masked_all((NRbins, N_gals), dtype = np.float_)
     F_int_Ha__rg = np.ma.empty((NRbins, N_gals), dtype = np.float_)
     F_int_Hb__rg = np.ma.empty((NRbins, N_gals), dtype = np.float_)
     F_int_O3__rg = np.ma.empty((NRbins, N_gals), dtype = np.float_)
     F_int_N2__rg = np.ma.empty((NRbins, N_gals), dtype = np.float_)
 
-    morf__g = np.ma.empty((N_gals), dtype = np.int_)
-    N_zones__g = np.ma.empty((N_gals), dtype = np.int_)
-    N_zones_notmasked__Tg = np.ma.zeros((N_T, N_gals), dtype = np.int_)
+    morf__g = np.ma.masked_all((N_gals), dtype = np.int_)
+    N_zones__g = np.ma.masked_all((N_gals), dtype = np.int_)
+    N_zones_notmasked__Tg = np.ma.masked_all((N_T, N_gals), dtype = np.int_)
 
     # automatically read PyCASSO and EmLines data cubes.
     for iGal, K in C.loop_cubes(gals.tolist(), imax = maxGals, EL = True, GP = args.gasprop, v_run = args.v_run):        
@@ -533,150 +535,43 @@ if __name__ == '__main__':
         #K.close()
         #del K
         print 'time per galaxy: %s %.2f' % (califaID, time.clock() - t_init_gal)
-
     print 'total time: %.2f' % (time.clock() - t_init_prog)
 
-    colortipo = ['brown', 'red', 'orange', 'green', '#00D0C9', '#0076C9', 'blue']
-    Ntype = len(colortipo)
-    mtypes = [ 0, 1, 2, 3, 4, 5, 6 ]
-    mtype_labels = [ 'E', 'S0', 'Sa', 'Sb', 'Sbc', 'Sc', 'Sd' ]
-    halfbinstep = np.diff(mtypes)[0]/2.
-    tickpos = np.linspace(mtypes[0] + halfbinstep, mtypes[-1] - halfbinstep, Ntype)
-            
-    aSFRSD__Ttr = np.empty((N_T, Ntype, NRbins), dtype = np.float_)
-    aSFRSD_Ha__Ttr = np.empty((N_T, Ntype, NRbins), dtype = np.float_)
-    nbinelem_aSFRSD__Ttr = np.empty((N_T, Ntype, NRbins), dtype = np.int_)
-    nbinelem_aSFRSD_Ha__Ttr = np.empty((N_T, Ntype, NRbins), dtype = np.int_)
-    perc_aSFRSD__pTtr = np.ma.masked_all((3, N_T, Ntype, NRbins), dtype = np.float_)
-    perc_aSFRSD_Ha__pTtr = np.ma.masked_all((3, N_T, Ntype, NRbins), dtype = np.float_)
+    if args.hdf5:
+        t_init_hdf5 = time.clock() 
+        import h5py
+        filename = args.hdf5
+        h5 = h5py.File(filename, 'w')
+        D = {}
+        D['HEADER/command_line'] = sys.argv
+        D['HEADER/RbinIni'] = args.rbinini
+        D['HEADER/RbinFin'] = args.rbinfin
+        D['HEADER/RbinStep'] = args.rbinstep
+        D['HEADER/xOkMin'] = args.minpopx
+        D['HEADER/tauVOkMin'] = args.mintauv
+        D['HEADER/tauVNebOkMin'] = args.mintauvneb
+        D['HEADER/tauVNebErrMax'] = args.maxtauvneberr
+        D['HEADER/RbinCenter__r'] = RbinCenter__r
+        D['HEADER/Rbin__r'] = Rbin__r
+        D['HEADER/tSF__T'] = tSF__T
+        D['HEADER/N_rbins'] = NRbins
+        D['HEADER/N_gals'] = N_gals
+        D['HEADER/N_T'] = N_T
+        D['HEADER/gals'] = gals,
+        D['data/N_zones_notmasked__Tg'] = N_zones_notmasked__Tg.data
+        D['mask/N_zones_notmasked__Tg'] = N_zones_notmasked__Tg.mask
+        D['data/morf__g'] = morf__g.data
+        D['mask/morf__g'] = morf__g.mask
+        D['data/aSFRSD__Trg'] = aSFRSD__Trg.data
+        D['mask/aSFRSD__Trg'] = aSFRSD__Trg.mask
+        D['data/aSFRSD_Ha__Trg'] = aSFRSD_Ha__Trg.data
+        D['mask/aSFRSD_Ha__Trg'] = aSFRSD_Ha__Trg.mask
+        for k in D.keys():
+            try:
+                h5.create_dataset(k, data = D[k], compression = 'gzip', compression_opts = 4)
+            except TypeError:
+                h5.create_dataset(k, data = D[k])
+        h5.close()
+        print 'time hdf5: %.2f' % (time.clock() - t_init_hdf5)
 
-    Ngals__t = np.empty((Ntype), dtype = np.int_)
-    for it in mtypes:
-        mask_morf__g = (morf__g == it)
-        Ngals__t[it] = np.sum(mask_morf__g)
-        for iT in range(N_T):
-
-            # G means masked g
-            aSFRSD__rG = aSFRSD__Trg[iT][:, mask_morf__g]
-            aSFRSD_Ha__rG = aSFRSD_Ha__Trg[iT][:, mask_morf__g]
-
-            for ir in np.where(RbinCenter__r <= 2 + args.rbinstep)[0]:
-                for ig in xrange(Ngals__t[it]):
-                    if aSFRSD__rG[ir].mask[ig]:
-                        aSFRSD__rG[ir, ig] = 0
-                    if aSFRSD_Ha__rG[ir].mask[ig]:    
-                        aSFRSD_Ha__rG[ir, ig] = 0.
-                    
-            aSFRSD__Ttr[iT][it] = aSFRSD__rG.mean(axis = 1)
-            nbinelem_aSFRSD__Ttr[iT][it] = aSFRSD__rG.count(axis = 1)
-            aSFRSD_Ha__Ttr[iT][it] = aSFRSD_Ha__rG.mean(axis = 1)
-            nbinelem_aSFRSD_Ha__Ttr[iT][it] = aSFRSD_Ha__rG.count(axis = 1)
-            
-            for ir in xrange(NRbins):
-                if nbinelem_aSFRSD__Ttr[iT, it, ir] > 2:
-                    perc_aSFRSD__pTtr[:, iT, it, ir] = np.percentile(aSFRSD__rG[ir].compressed(), [16, 50, 84])
-
-                if nbinelem_aSFRSD_Ha__Ttr[iT, it, ir] > 2:
-                    perc_aSFRSD_Ha__pTtr[:, iT, it, ir] = np.percentile(aSFRSD__rG[ir].compressed(), [16, 50, 84])
-
-    if not args.noplot:                    
-        import matplotlib as mpl
-        from matplotlib import pyplot as plt
-        from matplotlib.pyplot import MultipleLocator
-        from CALIFAUtils.plots import plot_text_ax
-        
-        iT = 1
-        ylim = (-3, 0)
-        f = plt.figure()
-        NRows = 2
-        NCols = 8
-        page_size_inches = [12, 8]
-        f.set_size_inches(page_size_inches)
-        grid_shape = (NRows, NCols)
-        cmap = mpl.colors.ListedColormap(colortipo)
-        suptitle = 'Ngals:%d  Nzones:%d  NRbins:%d  tSF:%.2f Myr' % ( np.sum(morf__g >= 0), N_zones_notmasked__Tg[iT].sum(), aSFRSD__Trg[iT].count(), tSF__T[iT]/1e6)
-        f.suptitle(suptitle, fontsize = 15) 
-        
-        ax = plt.subplot2grid(grid_shape, loc = (0, 0))
-        for it in mtypes:
-            ax.plot(RbinCenter__r, np.ma.log10(aSFRSD__Ttr[iT][it] * 1e6), c = colortipo[it], label = mtype_labels[it])
-        ax.set_ylabel(r'$\log\ \Sigma_{SFR}^\star(t_\star, R)\ [M_\odot yr^{-1} kpc^{-2}]$')
-        ax.xaxis.set_major_locator(MultipleLocator(1))
-        ax.xaxis.set_minor_locator(MultipleLocator(.2))
-        ax.yaxis.set_major_locator(MultipleLocator(1))
-        ax.yaxis.set_minor_locator(MultipleLocator(.2))
-        plt.setp(ax.get_xticklabels(), visible = False)
-        ax.grid(which = 'major')
-        ax.set_xlim(0,3)
-        ax.set_ylim(ylim)
-        
-        ax = plt.subplot2grid(grid_shape, loc = (1, 0))
-        for it in mtypes:
-            ax.plot(RbinCenter__r, np.ma.log10(aSFRSD_Ha__Ttr[iT][it] * 1e6), c = colortipo[it], label = mtype_labels[it])
-        ax.set_ylabel(r'$\log\ \Sigma_{SFR}^{neb}(R)\ [M_\odot yr^{-1} kpc^{-2}]$')
-        ax.set_xlabel(r'R [HLR]')
-        ax.xaxis.set_major_locator(MultipleLocator(1))
-        ax.xaxis.set_minor_locator(MultipleLocator(.2))
-        ax.yaxis.set_major_locator(MultipleLocator(1))
-        ax.yaxis.set_minor_locator(MultipleLocator(.2))
-        ax.grid(which = 'major')
-        ax.set_xlim(0,3)
-        ax.set_ylim(ylim)
-        
-        for it in mtypes:
-            ax = plt.subplot2grid(grid_shape, loc = (0, it + 1))
-            ax.plot(RbinCenter__r, np.ma.log10(aSFRSD__Ttr[iT][it] * 1e6), c = colortipo[it], label = mtype_labels[it])
-            ax.plot(RbinCenter__r, np.ma.log10(perc_aSFRSD__pTtr[0, iT, it, :] * 1e6), 'k--')
-            ax.plot(RbinCenter__r, np.ma.log10(perc_aSFRSD__pTtr[1, iT, it, :] * 1e6), 'k--')
-            ax.plot(RbinCenter__r, np.ma.log10(perc_aSFRSD__pTtr[2, iT, it, :] * 1e6), 'k--')
-            ax.xaxis.set_major_locator(MultipleLocator(1))
-            ax.xaxis.set_minor_locator(MultipleLocator(.2))
-            ax.yaxis.set_major_locator(MultipleLocator(1))
-            ax.yaxis.set_minor_locator(MultipleLocator(.2))
-            plt.setp(ax.get_xticklabels(), visible = False)
-            plt.setp(ax.get_yticklabels(), visible = False)
-            plot_text_ax(ax, '%s (%d)' % (mtype_labels[it], Ngals__t[it]), 0.95, 0.95, 15, 'top', 'right', colortipo[it])
-            ax.grid(which = 'major')
-            ax.set_xlim(0,3)
-            ax.set_ylim(ylim)
-    
-            ax = plt.subplot2grid(grid_shape, loc = (1, it + 1))
-            ax.plot(RbinCenter__r, np.ma.log10(aSFRSD_Ha__Ttr[iT][it] * 1e6), c = colortipo[it], label = mtype_labels[it])
-            ax.plot(RbinCenter__r, np.ma.log10(perc_aSFRSD_Ha__pTtr[0, iT, it, :] * 1e6), 'k--')
-            ax.plot(RbinCenter__r, np.ma.log10(perc_aSFRSD_Ha__pTtr[1, iT, it, :] * 1e6), 'k--')
-            ax.plot(RbinCenter__r, np.ma.log10(perc_aSFRSD_Ha__pTtr[2, iT, it, :] * 1e6), 'k--')
-            ax.xaxis.set_major_locator(MultipleLocator(1))
-            ax.xaxis.set_minor_locator(MultipleLocator(.2))
-            ax.yaxis.set_major_locator(MultipleLocator(1))
-            ax.yaxis.set_minor_locator(MultipleLocator(.2))
-            plt.setp(ax.get_xticklabels(), visible = False)
-            plt.setp(ax.get_yticklabels(), visible = False)
-            ax.grid(which = 'major')
-            ax.set_xlim(0,3)
-            ax.set_ylim(ylim)
-            
-            C.debug_var(
-                True, 
-                tipoM = mtypes[it], 
-                Nelemperbin = nbinelem_aSFRSD__Ttr[iT][it],
-                Nelemperbin_Ha = nbinelem_aSFRSD_Ha__Ttr[iT][it],
-            )
-        
-        f.subplots_adjust(bottom = 0.15, hspace = 0, wspace = 0, right = 0.95, left = 0.07)
-        if args.output is not None:
-            f.savefig(args.output)
-        else:
-            f.savefig('SFRSDRadialProfiles_%.2f.pdf' % args.minpopx)
-        
-        #EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
-        # ax = plt.subplot2grid(grid_shape, loc = (0, 0))
-        # ax = plt.subplot2grid(grid_shape, loc = (1, 0))
-        # ax.set_ylabel(r'$\log\ \Sigma_{SFR}^{neb}(R)\ [M_\odot yr^{-1} kpc^{-2}]$')
-        # ax.set_xlabel(r'R [HLR]')
-        #EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
-     
-        #cb = f.colorbar(sc, ticks = tickpos)
-        #cb.ax.set_yticklabels(mtype_labels)
-        #cb.ax.yaxis.set_ticks_position('none')    
-         
     
