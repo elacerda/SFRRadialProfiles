@@ -86,9 +86,8 @@ if __name__ == '__main__':
         f.set_size_inches(page_size_inches)
         grid_shape = (NRows, NCols)
         cmap = mpl.colors.ListedColormap(colortipo)
-        suptitle = 'Ngals:%d  Nzones:%d  NRbins:%d  tSF:%.2f Myr' % ( np.sum(morf__g >= 0), N_zones_notmasked__Tg[iT].sum(), aSFRSD__Trg[iT].count(), tSF__T[iT]/1e6)
-        try:
-            suptitle = ('%s  %' % (suptitle, sys.argv[3]))
+        suptitle = 'Ngals:%d  Nzones:%d  NRbins:%d  tSF:%.2f Myr  %s' % ( np.sum(morf__g >= 0), N_zones_notmasked__Tg[iT].sum(), aSFRSD__Trg[iT].count(), tSF__T[iT]/1e6, h5file)
+
         f.suptitle(suptitle, fontsize = 15) 
         
         ax = plt.subplot2grid(grid_shape, loc = (0, 0))
