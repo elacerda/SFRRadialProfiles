@@ -12,6 +12,8 @@ from CALIFAUtils.plots import plot_text_ax
 from matplotlib.pyplot import MultipleLocator
 from CALIFAUtils.scripts import get_h5_data_masked
 
+debug = True
+
 if __name__ == '__main__':
     try:
         h5file = sys.argv[1]
@@ -35,7 +37,8 @@ if __name__ == '__main__':
 
     colortipo = ['brown', 'red', 'orange', 'green', '#00D0C9', '#0076C9', 'blue']
     Ntype = len(colortipo)
-    mtypes = [ 0, 1, 2, 3, 4, 5, 6 ]
+    mtypes = [ -2, -1, 0, 1, 2, 3, 4 ]
+    #mtypes = [ 0, 1, 2, 3, 4, 5, 6 ]
     mtype_labels = [ 'E', 'S0', 'Sa', 'Sb', 'Sbc', 'Sc', 'Sd' ]
     halfbinstep = np.diff(mtypes)[0]/2.
     tickpos = np.linspace(mtypes[0] + halfbinstep, mtypes[-1] - halfbinstep, Ntype)
@@ -49,11 +52,11 @@ if __name__ == '__main__':
     
     Ngals__t = np.empty((Ntype), dtype = np.int_)
     
-    for it in mtypes:
-        mask_morf__g = (morf__g == it)
+    for it, t in enumerate(mtypes):
+        mask_morf__g = (morf__g == t)
         Ngals__t[it] = np.sum(mask_morf__g)
         for iT in range(N_T):
-    
+            C.debug_var(debug, iT = iT, it = it, NGals = Ngals__t[it])
             # G means masked g
             aSFRSD__rG = aSFRSD__Trg[iT][:, mask_morf__g]
             aSFRSD_Ha__rG = aSFRSD_Ha__Trg[iT][:, mask_morf__g]
@@ -64,18 +67,20 @@ if __name__ == '__main__':
                         aSFRSD__rG[ir, ig] = 0
                     if aSFRSD_Ha__rG[ir].mask[ig]:    
                         aSFRSD_Ha__rG[ir, ig] = 0.
-                    
+            C.debug_var(debug, aSFRSD__rG = aSFRSD__rG)
+            
             aSFRSD__Ttr[iT][it] = aSFRSD__rG.mean(axis = 1)
             nbinelem_aSFRSD__Ttr[iT][it] = aSFRSD__rG.count(axis = 1)
             aSFRSD_Ha__Ttr[iT][it] = aSFRSD_Ha__rG.mean(axis = 1)
             nbinelem_aSFRSD_Ha__Ttr[iT][it] = aSFRSD_Ha__rG.count(axis = 1)
             
             for ir in xrange(NRbins):
+                C.debug_var(debug, pref = '    >>>', ir = ir)
                 if nbinelem_aSFRSD__Ttr[iT, it, ir] > 2:
                     perc_aSFRSD__pTtr[:, iT, it, ir] = np.percentile(aSFRSD__rG[ir].compressed(), [16, 50, 84])
-    
+      
                 if nbinelem_aSFRSD_Ha__Ttr[iT, it, ir] > 2:
-                    perc_aSFRSD_Ha__pTtr[:, iT, it, ir] = np.percentile(aSFRSD__rG[ir].compressed(), [16, 50, 84])
+                    perc_aSFRSD_Ha__pTtr[:, iT, it, ir] = np.percentile(aSFRSD_Ha__rG[ir].compressed(), [16, 50, 84])
 
     for iT in xrange(N_T):    
         ylim = (-5, 0)
@@ -86,12 +91,13 @@ if __name__ == '__main__':
         f.set_size_inches(page_size_inches)
         grid_shape = (NRows, NCols)
         cmap = mpl.colors.ListedColormap(colortipo)
-        suptitle = 'Ngals:%d  Nzones:%d  NRbins:%d  tSF:%.2f Myr  %s' % ( np.sum(morf__g >= 0), N_zones_notmasked__Tg[iT].sum(), aSFRSD__Trg[iT].count(), tSF__T[iT]/1e6, h5file)
-
+        suptitle = 'Ngals:%d  Nzones:%d  NRbins:%d  tSF:%.2f Myr  %s' % ( np.sum(morf__g >= -2), N_zones_notmasked__Tg[iT].sum(), aSFRSD__Trg[iT].count(), tSF__T[iT]/1e6, h5file)
+  
         f.suptitle(suptitle, fontsize = 15) 
-        
+          
         ax = plt.subplot2grid(grid_shape, loc = (0, 0))
         for it in mtypes:
+            it += 2
             ax.plot(RbinCenter__r, np.ma.log10(aSFRSD__Ttr[iT][it] * 1e6), c = colortipo[it], label = mtype_labels[it])
         ax.set_ylabel(r'$\log\ \Sigma_{SFR}^\star(t_\star, R)\ [M_\odot yr^{-1} kpc^{-2}]$')
         ax.xaxis.set_major_locator(MultipleLocator(1))
@@ -102,9 +108,10 @@ if __name__ == '__main__':
         ax.grid(which = 'major')
         ax.set_xlim(0,3)
         ax.set_ylim(ylim)
-        
+          
         ax = plt.subplot2grid(grid_shape, loc = (1, 0))
         for it in mtypes:
+            it += 2
             ax.plot(RbinCenter__r, np.ma.log10(aSFRSD_Ha__Ttr[iT][it] * 1e6), c = colortipo[it], label = mtype_labels[it])
         ax.set_ylabel(r'$\log\ \Sigma_{SFR}^{neb}(R)\ [M_\odot yr^{-1} kpc^{-2}]$')
         ax.set_xlabel(r'R [HLR]')
@@ -115,9 +122,11 @@ if __name__ == '__main__':
         ax.grid(which = 'major')
         ax.set_xlim(0,3)
         ax.set_ylim(ylim)
-        
+          
         for it in mtypes:
-            ax = plt.subplot2grid(grid_shape, loc = (0, it + 1))
+            it += 2
+            col = it + 1
+            ax = plt.subplot2grid(grid_shape, loc = (0, col))
             ax.plot(RbinCenter__r, np.ma.log10(aSFRSD__Ttr[iT][it] * 1e6), c = colortipo[it], label = mtype_labels[it])
             ax.plot(RbinCenter__r, np.ma.log10(perc_aSFRSD__pTtr[0, iT, it, :] * 1e6), 'k--')
             ax.plot(RbinCenter__r, np.ma.log10(perc_aSFRSD__pTtr[1, iT, it, :] * 1e6), 'k--')
@@ -132,8 +141,8 @@ if __name__ == '__main__':
             ax.grid(which = 'major')
             ax.set_xlim(0,3)
             ax.set_ylim(ylim)
-    
-            ax = plt.subplot2grid(grid_shape, loc = (1, it + 1))
+      
+            ax = plt.subplot2grid(grid_shape, loc = (1, col))
             ax.plot(RbinCenter__r, np.ma.log10(aSFRSD_Ha__Ttr[iT][it] * 1e6), c = colortipo[it], label = mtype_labels[it])
             ax.plot(RbinCenter__r, np.ma.log10(perc_aSFRSD_Ha__pTtr[0, iT, it, :] * 1e6), 'k--')
             ax.plot(RbinCenter__r, np.ma.log10(perc_aSFRSD_Ha__pTtr[1, iT, it, :] * 1e6), 'k--')
@@ -147,20 +156,20 @@ if __name__ == '__main__':
             ax.grid(which = 'major')
             ax.set_xlim(0,3)
             ax.set_ylim(ylim)
-            
+              
             C.debug_var(
                 True, 
                 tipoM = mtypes[it], 
                 Nelemperbin = nbinelem_aSFRSD__Ttr[iT][it],
                 Nelemperbin_Ha = nbinelem_aSFRSD_Ha__Ttr[iT][it],
             )
-        
+          
         f.subplots_adjust(bottom = 0.15, hspace = 0, wspace = 0, right = 0.95, left = 0.07)
-
+  
         try:
             output = '%s_%.2fMyrs.pdf' % (sys.argv[2], tSF__T[iT]/1e6)
         except IndexError:
             output = 'SFRSDRadialProfiles_%.2fMyrs.pdf' % tSF__T[iT]/1e6
             print 'no output name, using: %s' % (sys.argv[0])
-            
+              
         f.savefig(output)
